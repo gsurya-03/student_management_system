@@ -155,7 +155,7 @@ class EduManageApp:
         frame = ctk.CTkFrame(self.root, corner_radius=20)
         frame.pack(pady=100, padx=200, fill="both", expand=True)
 
-        ctk.CTkLabel(frame, text="EduManage", font=ctk.CTkFont(size=32, weight="bold")).pack(pady=30)
+        ctk.CTkLabel(frame, text="🎓 EduManage", font=ctk.CTkFont(size=32, weight="bold")).pack(pady=30)
         ctk.CTkLabel(frame, text="Student Profile Management System",
                      font=ctk.CTkFont(size=16)).pack(pady=10)
 
@@ -181,6 +181,8 @@ class EduManageApp:
 
             if self.current_role == "admin":
                 AdminDashboard(self.root, self).show()
+            elif self.current_role == "teacher":
+                TeacherDashboard(self.root, self).show()
             else:
                 StudentDashboard(self.root, self).show()
         else:
@@ -299,6 +301,50 @@ class AdminDashboard:
             for sub, mark in grades.items():
                 ctk.CTkLabel(self.main_frame, text=f"   {sub}: {mark}/100").pack(anchor="w", padx=100)
 
+    # Admin Analytics with ECA Graph 
+    def show_analytics(self):
+        self.clear_main_frame()
+
+        # Make main frame scrollable
+        scroll_frame = ctk.CTkScrollableFrame(self.main_frame, corner_radius=0)
+        scroll_frame.pack(fill="both", expand=True, padx=10, pady=10)
+
+        ctk.CTkLabel(scroll_frame, text="Performance Analytics", 
+                     font=ctk.CTkFont(size=24, weight="bold")).pack(pady=20)
+
+        # Overall Grade Chart
+        if self.main_app.grades:
+            subjects = ["Math", "Physics", "Chemistry", "Biology", "English"]
+            avgs = []
+            for sub in subjects:
+                total = sum(self.main_app.grades[s].get(sub, 0) for s in self.main_app.grades)
+                count = len([s for s in self.main_app.grades if sub in self.main_app.grades[s]])
+                avgs.append(round(total / count, 1) if count > 0 else 0)
+
+            fig, ax = plt.subplots(figsize=(10, 5))
+            ax.bar(subjects, avgs, color="#00ffaa")
+            ax.set_title("Overall Average Performance")
+            ax.set_ylabel("Average Score")
+            ax.set_ylim(0, 100)
+            canvas = FigureCanvasTkAgg(fig, scroll_frame)
+            canvas.get_tk_widget().pack(pady=20, fill="both", expand=True)
+            canvas.draw()
+
+        # ECA Graph
+        ctk.CTkLabel(scroll_frame, text="ECA Points Overview", 
+                     font=ctk.CTkFont(size=18, weight="bold")).pack(pady=(30,10))
+
+        students = [u for u in self.main_app.users if self.main_app.users[u]["role"] == "student"]
+        totals = [sum(e.get("points", 0) for e in self.main_app.eca.get(s, [])) for s in students]
+        names = students
+
+        fig2, ax2 = plt.subplots(figsize=(10, 5))
+        ax2.bar(names, totals, color="#ffaa00")
+        ax2.set_title("Total ECA Points per Student")
+        ax2.set_ylabel("Points")
+        canvas2 = FigureCanvasTkAgg(fig2, scroll_frame)
+        canvas2.get_tk_widget().pack(pady=20, fill="both", expand=True)
+        canvas2.draw()
 
     def show_manage_eca(self):
         self.clear_main_frame()
@@ -317,6 +363,407 @@ class AdminDashboard:
             self.main_app.eca[student].append({"activity": activity, "description": desc, "date": date})
             self.main_app.save_data()
             tkmb.showinfo("Success", "ECA added!")
+
+    def export_pdf(self):
+        if not PDF_AVAILABLE:
+            tkmb.showerror("Error", "Install reportlab for PDF export")
+            return
+        try:
+            path = f"EduManage_Teacher_Report_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf"
+            c = canvas.Canvas(path, pagesize=letter)
+            y = 750
+
+            c.setFont("Helvetica-Bold", 16)
+            c.drawString(100, y, "=== EduManage Report (Teacher) ===")
+            y -= 40
+
+            c.setFont("Helvetica", 12)
+            c.drawString(100, y, f"Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
+            y -= 30
+
+            # Teacher Info
+            teacher_name = self.main_app.users[self.main_app.current_user]['full_name']
+            c.drawString(100, y, f"Teacher: {teacher_name}")
+            y -= 40
+
+            # Student List with Full Names
+            c.drawString(100, y, "STUDENTS IN CLASS:")
+            y -= 25
+
+            student_list = [u for u in self.main_app.users if self.main_app.users[u]["role"] == "student"]
+            for username in student_list:
+                full_name = self.main_app.users[username].get("full_name", username)
+                c.drawString(120, y, f"• {full_name} ({username})")
+                y -= 20
+                if y < 100:   # New page if needed
+                    c.showPage()
+                    y = 750
+
+            # Class Average Grades
+            y -= 10
+            c.drawString(100, y, "CLASS AVERAGE GRADES:")
+            y -= 25
+            subjects = ["Math", "Physics", "Chemistry", "Biology", "English"]
+            for sub in subjects:
+                total = sum(self.main_app.grades.get(s, {}).get(sub, 0) for s in self.main_app.grades)
+                count = len(self.main_app.grades)
+                avg = round(total / count, 1) if count > 0 else 0
+                c.drawString(120, y, f"{sub}: {avg}/100")
+                y -= 22
+
+            # Individual Student Grades (with Names)
+            y -= 15
+            c.drawString(100, y, "INDIVIDUAL STUDENT GRADES:")
+            y -= 30
+
+            for username in student_list:
+                full_name = self.main_app.users[username].get("full_name", username)
+                grades = self.main_app.grades.get(username, {})
+                
+                c.drawString(120, y, f"{full_name} ({username}):")
+                y -= 20
+                
+                if grades:
+                    for sub in ["Math", "Physics", "Chemistry", "Biology", "English"]:
+                        mark = grades.get(sub, 0)
+                        c.drawString(140, y, f"   {sub}: {mark}/100")
+                        y -= 18
+                else:
+                    c.drawString(140, y, "   No grades recorded")
+                    y -= 18
+                
+                y -= 8  # Extra spacing between students
+                if y < 100:
+                    c.showPage()
+                    y = 750
+
+            c.save()
+            tkmb.showinfo("Success", f"PDF saved successfully!\n{path}")
+        except Exception as e:
+            tkmb.showerror("Error", f"PDF export failed: {str(e)}")
+
+
+#  TEACHER DASHBOARD 
+class TeacherDashboard:
+    def __init__(self, root, main_app):
+        self.root = root
+        self.main_app = main_app
+        self.main_frame = None
+        self.current_month = datetime.now().month
+        self.current_year = datetime.now().year
+        self.calendar_buttons = []
+
+    def show(self):
+        for widget in self.root.winfo_children():
+            widget.destroy()
+        self.create_sidebar()
+        self.main_frame = ctk.CTkFrame(self.root, corner_radius=0)
+        self.main_frame.pack(side="right", fill="both", expand=True, padx=10, pady=10)
+        self.show_dashboard()
+
+    def create_sidebar(self):
+        sidebar = ctk.CTkFrame(self.root, width=250, corner_radius=0)
+        sidebar.pack(side="left", fill="y")
+        ctk.CTkLabel(sidebar, text="EduManage", font=ctk.CTkFont(size=24, weight="bold")).pack(pady=30)
+
+        ctk.CTkButton(sidebar, text="Dashboard", command=self.show_dashboard, height=40).pack(pady=8, padx=20, fill="x")
+        ctk.CTkButton(sidebar, text="Subject Scores", command=self.show_subject_scores, height=40).pack(pady=8, padx=20, fill="x")
+        ctk.CTkButton(sidebar, text="Attendance Calendar", command=self.show_attendance_calendar, height=40).pack(pady=8, padx=20, fill="x")
+        ctk.CTkButton(sidebar, text="Assign Grades", command=self.assign_grades, height=40).pack(pady=8, padx=20, fill="x")
+        ctk.CTkButton(sidebar, text="Manage ECA + Points", command=self.manage_eca, height=40).pack(pady=8, padx=20, fill="x")
+        ctk.CTkButton(sidebar, text="ECA Graph", command=self.show_eca_graph, height=40).pack(pady=8, padx=20, fill="x")
+        ctk.CTkButton(sidebar, text="Attendance Stats (pandas)", command=self.show_attendance_stats, height=40).pack(pady=8, padx=20, fill="x")
+        ctk.CTkButton(sidebar, text="Export to PDF", command=self.export_pdf, height=40).pack(pady=8, padx=20, fill="x")
+        ctk.CTkButton(sidebar, text="View Students", command=self.show_all_students, height=40).pack(pady=8, padx=20, fill="x")
+        ctk.CTkButton(sidebar, text="Logout", command=self.main_app.logout, fg_color="red", height=40).pack(side="bottom", pady=30, padx=20, fill="x")
+
+    def clear_main_frame(self):
+        if self.main_frame:
+            for widget in self.main_frame.winfo_children():
+                widget.destroy()
+
+    def show_dashboard(self):
+        self.clear_main_frame()
+        name = self.main_app.users[self.main_app.current_user]['full_name']
+        ctk.CTkLabel(self.main_frame, text=f"Welcome, {name} (Teacher)", font=ctk.CTkFont(size=28, weight="bold")).pack(pady=30)
+
+    def show_subject_scores(self):
+        self.clear_main_frame()
+        ctk.CTkLabel(self.main_frame, text="Subject Wise Average Scores", font=ctk.CTkFont(size=24, weight="bold")).pack(pady=20)
+        subjects = ["Math", "Physics", "Chemistry", "Biology", "English"]
+        avgs = []
+        for sub in subjects:
+            total = sum(self.main_app.grades.get(s, {}).get(sub, 0) for s in self.main_app.grades)
+            count = len(self.main_app.grades)
+            avgs.append(round(total / count, 1) if count > 0 else 0)
+
+        fig, ax = plt.subplots(figsize=(10, 5))
+        ax.bar(subjects, avgs, color="#00d4ff")
+        ax.set_title("Average Scores by Subject")
+        ax.set_ylim(0, 100)
+        canvas = FigureCanvasTkAgg(fig, self.main_frame)
+        canvas.get_tk_widget().pack(pady=20, fill="both", expand=True)
+        canvas.draw()
+
+    def show_all_students(self):
+        self.clear_main_frame()
+        ctk.CTkLabel(self.main_frame, text="All Students", font=ctk.CTkFont(size=24, weight="bold")).pack(pady=20)
+        for username, info in self.main_app.users.items():
+            if info["role"] == "student":
+                frame = ctk.CTkFrame(self.main_frame)
+                frame.pack(pady=8, padx=80, fill="x")
+                ctk.CTkLabel(frame, text=f"{username} — {info['full_name']}").pack(side="left", padx=20)
+
+    def show_attendance_calendar(self):
+        self.clear_main_frame()
+        ctk.CTkLabel(self.main_frame, text=f"Attendance Calendar - {calendar.month_name[self.current_month]} {self.current_year}",
+                     font=ctk.CTkFont(size=24, weight="bold")).pack(pady=10)
+
+        cal_frame = ctk.CTkFrame(self.main_frame)
+        cal_frame.pack(pady=10)
+
+        days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+        for i, day in enumerate(days):
+            ctk.CTkLabel(cal_frame, text=day, width=60).grid(row=0, column=i, padx=2, pady=2)
+
+        cal = calendar.monthcalendar(self.current_year, self.current_month)
+        self.calendar_buttons = []
+        row = 1
+        for week in cal:
+            for day in week:
+                if day == 0:
+                    ctk.CTkLabel(cal_frame, text="").grid(row=row, column=week.index(day), padx=2, pady=2)
+                else:
+                    btn = ctk.CTkButton(cal_frame, text=str(day), width=60, height=60,
+                                        command=lambda d=day: self.mark_attendance_on_date(d))
+                    btn.grid(row=row, column=week.index(day), padx=2, pady=2)
+                    self.calendar_buttons.append(btn)
+            row += 1
+
+        ctk.CTkButton(self.main_frame, text="← Previous Month", command=self.prev_month).pack(side="left", padx=20, pady=10)
+        ctk.CTkButton(self.main_frame, text="Next Month →", command=self.next_month).pack(side="right", padx=20, pady=10)
+
+    def prev_month(self):
+        self.current_month -= 1
+        if self.current_month < 1:
+            self.current_month = 12
+            self.current_year -= 1
+        self.show_attendance_calendar()
+
+    def next_month(self):
+        self.current_month += 1
+        if self.current_month > 12:
+            self.current_month = 1
+            self.current_year += 1
+        self.show_attendance_calendar()
+
+    def mark_attendance_on_date(self, day):
+        date_str = f"{self.current_year}-{self.current_month:02d}-{day:02d}"
+        mark_win = ctk.CTkToplevel(self.root)
+        mark_win.title(f"Mark Attendance - {date_str}")
+        mark_win.geometry("600x500")
+
+        ctk.CTkLabel(mark_win, text=f"Mark attendance for {date_str}", font=ctk.CTkFont(size=18, weight="bold")).pack(pady=10)
+
+        for student in [u for u in self.main_app.users if self.main_app.users[u]["role"] == "student"]:
+            frame = ctk.CTkFrame(mark_win)
+            frame.pack(pady=5, padx=20, fill="x")
+            ctk.CTkLabel(frame, text=f"{student} - {self.main_app.users[student]['full_name']}").pack(side="left", padx=20)
+
+            ctk.CTkButton(frame, text="Present", fg_color="green", width=100,
+                          command=lambda s=student, d=date_str: self.save_attendance_date(s, d, "Present", mark_win)).pack(side="right", padx=5)
+            ctk.CTkButton(frame, text="Absent", fg_color="red", width=100,
+                          command=lambda s=student, d=date_str: self.save_attendance_date(s, d, "Absent", mark_win)).pack(side="right", padx=5)
+
+    def save_attendance_date(self, student, date, status, window):
+        if student not in self.main_app.attendance:
+            self.main_app.attendance[student] = []
+        self.main_app.attendance[student] = [a for a in self.main_app.attendance[student] if a["date"] != date]
+        self.main_app.attendance[student].append({"date": date, "status": status})
+        self.main_app.save_data()
+        tkmb.showinfo("Success", f"{student} marked {status} on {date}")
+        window.destroy()
+
+    def manage_eca(self):
+        self.clear_main_frame()
+        ctk.CTkLabel(self.main_frame, text="Manage ECA + Points for Students", font=ctk.CTkFont(size=24, weight="bold")).pack(pady=20)
+        for student in [u for u in self.main_app.users if self.main_app.users[u]["role"] == "student"]:
+            frame = ctk.CTkFrame(self.main_frame)
+            frame.pack(pady=12, padx=60, fill="x")
+            ctk.CTkLabel(frame, text=f"{student} - {self.main_app.users[student]['full_name']}").pack(pady=5)
+            ctk.CTkButton(frame, text="Add ECA Activity + Points",
+                          command=lambda s=student: self.add_eca_with_points(s)).pack(pady=8)
+
+    def add_eca_with_points(self, student):
+        activity = tksd.askstring("ECA", "Activity Name:", parent=self.root)
+        desc = tksd.askstring("ECA", "Description:", parent=self.root)
+        points = tksd.askstring("ECA", "Points (0-20):", initialvalue="10", parent=self.root)
+        date = tksd.askstring("ECA", "Date (yyyy-mm-dd):", parent=self.root)
+        try:
+            points = int(points)
+        except:
+            points = 0
+        if activity and desc and date:
+            if student not in self.main_app.eca:
+                self.main_app.eca[student] = []
+            self.main_app.eca[student].append({"activity": activity, "description": desc, "date": date, "points": points})
+            self.main_app.save_data()
+            tkmb.showinfo("Done", f"ECA with {points} points added for {student}!")
+
+    def show_eca_graph(self):
+        self.clear_main_frame()
+        ctk.CTkLabel(self.main_frame, text="ECA Points Graph (All Students)", font=ctk.CTkFont(size=24, weight="bold")).pack(pady=20)
+        students = [u for u in self.main_app.users if self.main_app.users[u]["role"] == "student"]
+        totals = [sum(e.get("points", 0) for e in self.main_app.eca.get(s, [])) for s in students]
+        fig, ax = plt.subplots(figsize=(10, 5))
+        ax.bar(students, totals, color="#ffaa00")
+        ax.set_title("Total ECA Points per Student")
+        canvas = FigureCanvasTkAgg(fig, self.main_frame)
+        canvas.get_tk_widget().pack(pady=20, fill="both", expand=True)
+        canvas.draw()
+
+    def show_attendance_stats(self):
+        self.clear_main_frame()
+        ctk.CTkLabel(self.main_frame, text="Attendance Stats (Current Month) - Pandas + Matplotlib",
+                     font=ctk.CTkFont(size=24, weight="bold")).pack(pady=20)
+
+        students = [u for u in self.main_app.users if self.main_app.users[u]["role"] == "student"]
+        data = []
+        for s in students:
+            records = self.main_app.attendance.get(s, [])
+            this_month = [r for r in records if r["date"].startswith(f"{self.current_year}-{self.current_month:02d}")]
+            total_days = len(this_month)
+            present = sum(1 for r in this_month if r["status"] == "Present")
+            perc = round((present / total_days * 100), 1) if total_days > 0 else 0
+            data.append({"Student": s, "Total Days": total_days, "Present": present, "Attendance %": perc})
+
+        if not data:
+            ctk.CTkLabel(self.main_frame, text="No attendance data yet").pack()
+            return
+
+        df = pd.DataFrame(data)
+        print("=== Pandas Attendance DF ===")
+        print(df)
+
+        fig, ax = plt.subplots(figsize=(10, len(students)*0.6 + 2))
+        ax.axis('off')
+        table = ax.table(cellText=df.values, colLabels=df.columns, cellLoc='center', loc='center')
+        table.auto_set_font_size(False)
+        table.set_fontsize(10)
+        table.scale(1.2, 1.8)
+        ax.set_title("Monthly Attendance Summary")
+        canvas = FigureCanvasTkAgg(fig, self.main_frame)
+        canvas.get_tk_widget().pack(pady=20, fill="both", expand=True)
+        canvas.draw()
+
+    def assign_grades(self):
+        self.clear_main_frame()
+        ctk.CTkLabel(self.main_frame, text="Assign / Update Grades", font=ctk.CTkFont(size=24, weight="bold")).pack(pady=20)
+        subjects = ["Math", "Physics", "Chemistry", "Biology", "English"]
+        for student in [u for u in self.main_app.users if self.main_app.users[u]["role"] == "student"]:
+            frame = ctk.CTkFrame(self.main_frame)
+            frame.pack(pady=12, padx=60, fill="x")
+            ctk.CTkLabel(frame, text=f"{student} — {self.main_app.users[student]['full_name']}", font=ctk.CTkFont(weight="bold")).pack(pady=5)
+            entries = {}
+            row = ctk.CTkFrame(frame)
+            row.pack(fill="x", pady=5)
+            for sub in subjects:
+                ctk.CTkLabel(row, text=sub, width=90).pack(side="left", padx=8)
+                entry = ctk.CTkEntry(row, width=70)
+                entry.insert(0, str(self.main_app.grades.get(student, {}).get(sub, 0)))
+                entry.pack(side="left", padx=5)
+                entries[sub] = entry
+
+            def save_grades(s=student, e=entries):
+                for sub, ent in e.items():
+                    try:
+                        mark = int(ent.get())
+                        self.main_app.grades[s][sub] = max(0, min(100, mark))
+                    except ValueError:
+                        pass
+                self.main_app.save_data()
+                tkmb.showinfo("Success", f"Grades saved for {s}")
+
+            ctk.CTkButton(frame, text="Save Grades", command=save_grades).pack(pady=8)
+
+    def export_pdf(self):
+        if not PDF_AVAILABLE:
+            tkmb.showerror("Error", "Install reportlab for PDF export")
+            return
+        try:
+            path = f"EduManage_Teacher_Report_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf"
+            c = canvas.Canvas(path, pagesize=letter)
+            y = 750
+
+            c.setFont("Helvetica-Bold", 16)
+            c.drawString(100, y, "=== EduManage Report (Teacher) ===")
+            y -= 40
+
+            c.setFont("Helvetica", 12)
+            c.drawString(100, y, f"Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
+            y -= 30
+
+            # Teacher Info
+            teacher_name = self.main_app.users[self.main_app.current_user]['full_name']
+            c.drawString(100, y, f"Teacher: {teacher_name}")
+            y -= 40
+
+            # Student List with Full Names
+            c.drawString(100, y, "STUDENTS IN CLASS:")
+            y -= 25
+
+            student_list = [u for u in self.main_app.users if self.main_app.users[u]["role"] == "student"]
+            for username in student_list:
+                full_name = self.main_app.users[username].get("full_name", username)
+                c.drawString(120, y, f"• {full_name} ({username})")
+                y -= 20
+                if y < 100:   # New page if needed
+                    c.showPage()
+                    y = 750
+
+            # Class Average Grades
+            y -= 10
+            c.drawString(100, y, "CLASS AVERAGE GRADES:")
+            y -= 25
+            subjects = ["Math", "Physics", "Chemistry", "Biology", "English"]
+            for sub in subjects:
+                total = sum(self.main_app.grades.get(s, {}).get(sub, 0) for s in self.main_app.grades)
+                count = len(self.main_app.grades)
+                avg = round(total / count, 1) if count > 0 else 0
+                c.drawString(120, y, f"{sub}: {avg}/100")
+                y -= 22
+
+            # Individual Student Grades (with Names)
+            y -= 15
+            c.drawString(100, y, "INDIVIDUAL STUDENT GRADES:")
+            y -= 30
+
+            for username in student_list:
+                full_name = self.main_app.users[username].get("full_name", username)
+                grades = self.main_app.grades.get(username, {})
+                
+                c.drawString(120, y, f"{full_name} ({username}):")
+                y -= 20
+                
+                if grades:
+                    for sub in ["Math", "Physics", "Chemistry", "Biology", "English"]:
+                        mark = grades.get(sub, 0)
+                        c.drawString(140, y, f"   {sub}: {mark}/100")
+                        y -= 18
+                else:
+                    c.drawString(140, y, "   No grades recorded")
+                    y -= 18
+                
+                y -= 8  # Extra spacing between students
+                if y < 100:
+                    c.showPage()
+                    y = 750
+
+            c.save()
+            tkmb.showinfo("Success", f"PDF saved successfully!\n{path}")
+        except Exception as e:
+            tkmb.showerror("Error", f"PDF export failed: {str(e)}")
+
 
 #  STUDENT DASHBOARD 
 class StudentDashboard:
@@ -444,6 +891,7 @@ class StudentDashboard:
         for record in att:
             color = "green" if record["status"] == "Present" else "red"
             ctk.CTkLabel(self.main_frame, text=f"{record['date']}: {record['status']}", text_color=color).pack(pady=5)
+
 
 if __name__ == "__main__":
     print(" Starting EduManage")
