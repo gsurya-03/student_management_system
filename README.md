@@ -133,7 +133,7 @@ This project is designed for educational purposes and demonstrates basic Python 
 ---
 
 # 🧠 Authors
-Surya Pratap Gautam, Prashanna Rijal, Pranshu Bhatta A/K/A kalua Nigga
+Surya Pratap Gautam, Prashanna Rijal, Pranshu Bhatta
 
 Built with effort and caffeine ☕. <br>
 For academic learning and portfolio showcase.
