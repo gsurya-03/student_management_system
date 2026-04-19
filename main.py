@@ -82,7 +82,7 @@ class EduManageApp:
 
     def create_demo_data(self):
         """Create demo accounts when no data exists"""
-        print("Creating demo accounts because no data found...")
+        print("🛠️ Creating demo accounts because no data found...")
         self.users = {
             "admin": {"full_name": "Administrator", "role": "admin", "email": "admin@edumanage.com"},
             "teacher1": {"full_name": "Teacher One", "role": "teacher", "email": "teacher1@edumanage.com"},
@@ -108,6 +108,12 @@ class EduManageApp:
                 {"date": "2025-04-02", "status": "Absent"}
             ]
         }
+
+        self.safe_save(self.users_file, self.users)
+        self.safe_save(self.passwords_file, self.passwords)
+        self.safe_save(self.grades_file, self.grades)
+        self.safe_save(self.eca_file, self.eca)
+        self.safe_save(self.attendance_file, self.attendance)
 
         print("Demo accounts created! Use:")
         print("   admin / admin123")
@@ -149,7 +155,7 @@ class EduManageApp:
         frame = ctk.CTkFrame(self.root, corner_radius=20)
         frame.pack(pady=100, padx=200, fill="both", expand=True)
 
-        ctk.CTkLabel(frame, text="🎓 EduManage", font=ctk.CTkFont(size=32, weight="bold")).pack(pady=30)
+        ctk.CTkLabel(frame, text="EduManage", font=ctk.CTkFont(size=32, weight="bold")).pack(pady=30)
         ctk.CTkLabel(frame, text="Student Profile Management System",
                      font=ctk.CTkFont(size=16)).pack(pady=10)
 
@@ -175,6 +181,8 @@ class EduManageApp:
 
             if self.current_role == "admin":
                 AdminDashboard(self.root, self).show()
+            else:
+                StudentDashboard(self.root, self).show()
         else:
             tkmb.showerror("Error", "Invalid username or password!")
 
@@ -309,6 +317,133 @@ class AdminDashboard:
             self.main_app.eca[student].append({"activity": activity, "description": desc, "date": date})
             self.main_app.save_data()
             tkmb.showinfo("Success", "ECA added!")
+
+#  STUDENT DASHBOARD 
+class StudentDashboard:
+    def __init__(self, root, main_app):
+        self.root = root
+        self.main_app = main_app
+        self.main_frame = None
+
+    def show(self):
+        for widget in self.root.winfo_children():
+            widget.destroy()
+        self.create_sidebar()
+        self.main_frame = ctk.CTkFrame(self.root, corner_radius=0)
+        self.main_frame.pack(side="right", fill="both", expand=True, padx=10, pady=10)
+        self.show_dashboard()
+
+    def create_sidebar(self):
+        sidebar = ctk.CTkFrame(self.root, width=250, corner_radius=0)
+        sidebar.pack(side="left", fill="y")
+        ctk.CTkLabel(sidebar, text="EduManage", font=ctk.CTkFont(size=24, weight="bold")).pack(pady=30)
+        ctk.CTkButton(sidebar, text="Dashboard", command=self.show_dashboard, height=40).pack(pady=8, padx=20, fill="x")
+        ctk.CTkButton(sidebar, text="Profile", command=self.show_profile, height=40).pack(pady=8, padx=20, fill="x")
+        ctk.CTkButton(sidebar, text="My Grades", command=self.show_my_grades, height=40).pack(pady=8, padx=20, fill="x")
+        ctk.CTkButton(sidebar, text="My ECA", command=self.show_my_eca, height=40).pack(pady=8, padx=20, fill="x")
+        ctk.CTkButton(sidebar, text="My Attendance", command=self.show_my_attendance, height=40).pack(pady=8, padx=20, fill="x")
+        ctk.CTkButton(sidebar, text="Logout", command=self.main_app.logout, fg_color="red", height=40).pack(side="bottom", pady=30, padx=20, fill="x")
+
+    def clear_main_frame(self):
+        if self.main_frame:
+            for widget in self.main_frame.winfo_children():
+                widget.destroy()
+
+    def show_dashboard(self):
+        self.clear_main_frame()
+        user = self.main_app.users[self.main_app.current_user]
+        ctk.CTkLabel(self.main_frame, text=f"Welcome back, {user['full_name']}!", font=ctk.CTkFont(size=28, weight="bold")).pack(pady=30)
+        grades = self.main_app.grades.get(self.main_app.current_user, {})
+        if grades:
+            fig, ax = plt.subplots(figsize=(8, 4))
+            subjects = list(grades.keys())
+            marks = list(grades.values())
+            ax.bar(subjects, marks, color="#00d4ff")
+            ax.set_title("Your Academic Performance")
+            ax.set_ylim(0, 100)
+            canvas = FigureCanvasTkAgg(fig, self.main_frame)
+            canvas.get_tk_widget().pack(pady=20, padx=40, fill="both", expand=True)
+            canvas.draw()
+
+    def show_profile(self):
+        self.clear_main_frame()
+        current_username = self.main_app.current_user
+        user = self.main_app.users[current_username]
+        ctk.CTkLabel(self.main_frame, text="Account Settings", font=ctk.CTkFont(size=24, weight="bold")).pack(pady=20)
+        frame = ctk.CTkFrame(self.main_frame)
+        frame.pack(pady=20, padx=100, fill="x")
+        ctk.CTkLabel(frame, text="Full Name").pack(pady=(10,2), anchor="w")
+        name_entry = ctk.CTkEntry(frame, width=350)
+        name_entry.insert(0, user.get("full_name", ""))
+        name_entry.pack(pady=5)
+        ctk.CTkLabel(frame, text="Email").pack(pady=(10,2), anchor="w")
+        email_entry = ctk.CTkEntry(frame, width=350)
+        email_entry.insert(0, user.get("email", ""))
+        email_entry.pack(pady=5)
+        ctk.CTkLabel(frame, text="Current Password (required only if changing password)").pack(pady=(15,2), anchor="w")
+        old_pass = ctk.CTkEntry(frame, show="*", width=350)
+        old_pass.pack(pady=5)
+        ctk.CTkLabel(frame, text="New Password (leave blank to keep current)").pack(pady=(10,2), anchor="w")
+        new_pass = ctk.CTkEntry(frame, show="*", width=350)
+        new_pass.pack(pady=5)
+
+        def save_changes():
+            new_name = name_entry.get().strip()
+            new_email = email_entry.get().strip()
+            old_password = old_pass.get().strip()
+            new_password = new_pass.get().strip()
+            if not new_name or not new_email:
+                tkmb.showerror("Error", "Name and Email cannot be empty")
+                return
+            if new_password:
+                if not old_password or self.main_app.hash_password(old_password) != self.main_app.passwords[current_username]:
+                    tkmb.showerror("Error", "Current password is incorrect")
+                    return
+                if not self.main_app.is_strong_password(new_password):
+                    tkmb.showerror("Error", "New password must be 8+ chars with uppercase, lowercase & number")
+                    return
+                self.main_app.passwords[current_username] = self.main_app.hash_password(new_password)
+            self.main_app.users[current_username]["full_name"] = new_name
+            self.main_app.users[current_username]["email"] = new_email
+            self.main_app.save_data()
+            tkmb.showinfo("Success", "Profile updated successfully!")
+            self.show_dashboard()
+
+        ctk.CTkButton(frame, text="Save Changes", command=save_changes).pack(pady=20)
+
+    def show_my_grades(self):
+        self.clear_main_frame()
+        ctk.CTkLabel(self.main_frame, text="My Grades", font=ctk.CTkFont(size=24, weight="bold")).pack(pady=20)
+        grades = self.main_app.grades.get(self.main_app.current_user, {})
+        for sub, mark in grades.items():
+            frame = ctk.CTkFrame(self.main_frame)
+            frame.pack(pady=8, padx=100, fill="x")
+            ctk.CTkLabel(frame, text=sub, width=150).pack(side="left", padx=20)
+            ctk.CTkLabel(frame, text=f"{mark}/100", font=ctk.CTkFont(size=18, weight="bold")).pack(side="right", padx=20)
+
+    def show_my_eca(self):
+        self.clear_main_frame()
+        ctk.CTkLabel(self.main_frame, text="My Extracurricular Activities", font=ctk.CTkFont(size=24, weight="bold")).pack(pady=20)
+        acts = self.main_app.eca.get(self.main_app.current_user, [])
+        if not acts:
+            ctk.CTkLabel(self.main_frame, text="No ECA recorded yet").pack()
+            return
+        for act in acts:
+            frame = ctk.CTkFrame(self.main_frame)
+            frame.pack(pady=8, padx=80, fill="x")
+            ctk.CTkLabel(frame, text=f"{act['activity']} - {act['description']}").pack()
+            ctk.CTkLabel(frame, text=act['date'], text_color="gray").pack()
+
+    def show_my_attendance(self):
+        self.clear_main_frame()
+        ctk.CTkLabel(self.main_frame, text="My Attendance", font=ctk.CTkFont(size=24, weight="bold")).pack(pady=20)
+        att = self.main_app.attendance.get(self.main_app.current_user, [])
+        if not att:
+            ctk.CTkLabel(self.main_frame, text="No attendance records").pack()
+            return
+        for record in att:
+            color = "green" if record["status"] == "Present" else "red"
+            ctk.CTkLabel(self.main_frame, text=f"{record['date']}: {record['status']}", text_color=color).pack(pady=5)
 
 if __name__ == "__main__":
     print(" Starting EduManage")
