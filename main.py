@@ -42,7 +42,7 @@ class EduManageApp:
     def __init__(self):
         self.root = ctk.CTk()
         self.root.title("EduManage - Student Profile System")
-        self.root.geometry("1200x800")
+        self.root.geometry("1320x800")
 
         self.data_dir = "data"
         os.makedirs(self.data_dir, exist_ok=True)
