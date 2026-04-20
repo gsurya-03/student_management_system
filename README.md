@@ -106,7 +106,7 @@ python -m venv venv  # For Windows
 venv\scripts\activate.ps1 # For Windows
 pip install -r requirements.txt
 python3 main.py # For Mac/Linux/Unix
-python main.py
+python main.py # For windows
 ```
 ---
 ## 🔑 Default Demo Accounts
