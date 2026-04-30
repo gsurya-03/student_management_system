@@ -22,6 +22,9 @@ import hashlib
 import re
 import calendar
 import pandas as pd
+from email_validator import validate_email, EmailNotValidError
+
+email = "example@example.com"
 
 # For PDF export (pip install reportlab)
 try:
@@ -264,20 +267,31 @@ class AdminDashboard:
             tkmb.showerror("Error", "Username already exists or is empty")
             return
         name = tksd.askstring("Add User", "Full Name:", parent=self.root)
-        role = tksd.askstring("Add User", "Role (student/teacher/admin):", initialvalue="student", parent=self.root)
-        email = tksd.askstring("Add User", "Email:", parent=self.root)
+        role = tksd.askstring("Add User", "Role (student/teacher/admin):", initialvalue="student", parent=self.root)                                                                                       
         pwd = tksd.askstring("Add User", "Password:", parent=self.root)
-        if name and role and email and pwd:
-            role = role.lower()
-            self.main_app.users[username] = {"full_name": name, "role": role, "email": email}
-            self.main_app.passwords[username] = self.main_app.hash_password(pwd)
-            if role == "student":
-                self.main_app.grades[username] = {"Math": 0, "Physics": 0, "Chemistry": 0, "Biology": 0, "English": 0}
-                self.main_app.eca[username] = []
-                self.main_app.attendance[username] = []
-            self.main_app.save_data()
-            tkmb.showinfo("Success", f"User {username} added!")
-            self.show_manage_users()
+        if not (name and role and pwd):
+            return
+        while True:
+            email = tksd.askstring("Add User", "Email:", parent=self.root)
+            if not email:
+                return
+            try:
+                email_info = validate_email(email)
+                email = email_info.normalized
+                break
+            except EmailNotValidError as e:
+                tkmb.showerror("Invalid Email", str(e))
+
+        role = role.lower()
+        self.main_app.users[username] = {"full_name": name, "role": role, "email": email}
+        self.main_app.passwords[username] = self.main_app.hash_password(pwd)
+        if role == "student":
+            self.main_app.grades[username] = {"Math": 0, "Physics": 0, "Chemistry": 0, "Biology": 0, "English": 0}
+            self.main_app.eca[username] = []
+            self.main_app.attendance[username] = []
+        self.main_app.save_data()
+        tkmb.showinfo("Success", f"User {username} added!")
+        self.show_manage_users()
 
     def delete_user(self, username):
         if tkmb.askyesno("Confirm", f"Delete user {username}?"):
@@ -357,12 +371,25 @@ class AdminDashboard:
         activity = tksd.askstring("Add ECA", "Activity:", parent=self.root)
         desc = tksd.askstring("Add ECA", "Description:", parent=self.root)
         date = tksd.askstring("Add ECA", "Date (yyyy-mm-dd):", parent=self.root)
-        if activity and desc and date:
-            if student not in self.main_app.eca:
-                self.main_app.eca[student] = []
-            self.main_app.eca[student].append({"activity": activity, "description": desc, "date": date})
-            self.main_app.save_data()
-            tkmb.showinfo("Success", "ECA added!")
+        if not (activity and desc):
+            return
+        while True:
+            date = tksd.askstring('Add ECA', 'Date (yyyy-mm-dd):', parent=self.root)
+
+            # handel cancel button
+            if date is None:
+                return
+            try:
+                datetime.strptime(date,'%Y-%m-%d')
+                break
+            except ValueError:
+                 tkmb.showerror("Invalid Date", "Please enter date in yyyy-mm-dd form")
+
+        if student not in self.main_app.eca:
+            self.main_app.eca[student] = []
+        self.main_app.eca[student].append({"activity": activity, "description": desc, "date": date})
+        self.main_app.save_data()
+        tkmb.showinfo("Success", "ECA added!")
 
     def export_pdf(self):
         if not PDF_AVAILABLE:
